@@ -34,6 +34,8 @@ def test(episodes=10):
             print(f"{action}: {q_value}")
         print("~~~~~~~~~~~~~~~~~~~~~~~")
 
+        g_rewards_for_x_positions = []
+
         while not done:
             # Select the best action from the Q-table
             action = np.argmax(q_table[state_discrete])  # Best action from Q-table
@@ -43,10 +45,15 @@ def test(episodes=10):
 
             # Get the next state and reward
             mario_api.get_current_state_from_emulator()
-            reward, done = calculate_reward(mario_api)
+            reward, done, reward_for_x_position, _, _, _, _, _, _, _ = calculate_reward(mario_api)
+
+            g_rewards_for_x_positions.append(reward_for_x_position)
 
             # Discretize the next state
             state_discrete = discretize_state(mario_api)
+
+            highest_x_position = max(g_rewards_for_x_positions)
+            total_reward += highest_x_position
 
             # Accumulate total reward
             total_reward += reward

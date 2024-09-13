@@ -8,7 +8,7 @@ from smw_api import MarioAPI
 # Q-Learning parameters
 LEARNING_RATE = 0.05
 DISCOUNT_FACTOR = 0.99
-EPISODES = 100
+EPISODES = 300
 
 # Discrete state buckets
 STATE_BUCKETS = [
@@ -86,7 +86,7 @@ def train():
     q_table = np.random.uniform(low=-1, high=1, size=(STATE_BUCKETS + [7]))
 
     epsilon = 1.0  # Exploration rate
-    epsilon_decay = 0.999
+    epsilon_decay = 0.983  # Decay rate for exploration
     min_epsilon = 0.01
     all_rewards = []
 
@@ -100,9 +100,19 @@ def train():
         done = False
         total_reward = 0
 
-        print("Move Left | Move Right | Jump | Stop Run | Spin Jump | Crouch | Look Up")
-        print(q_table[state_discrete])
-        print("~~~~~~~~~~~~~~~~~~~~~~~")
+        # print("Move Left | Move Right | Jump | Stop Run | Spin Jump | Crouch | Look Up")
+        # print(q_table[state_discrete])
+        # print("~~~~~~~~~~~~~~~~~~~~~~~")
+
+        g_rewards_for_x_positions = []
+        # g_reward_for_x_position = 0
+        g_reward_for_x_velocity = 0
+        g_reward_for_grounded_and_moving = 0
+        g_small_penalty_for_time = 0
+        g_penalty_for_time = 0
+        g_penalty_for_not_moving_right = 0
+        g_reward_for_level_completion = 0
+        g_penalty_for_death = 0
 
         while not done:
             # Select an action (epsilon-greedy strategy)
@@ -116,8 +126,28 @@ def train():
 
             # Get the next state and reward
             mario_api.get_current_state_from_emulator()
-            reward, done = calculate_reward(mario_api, action)  # Custom reward function based on state
-            # print(f"Reward: {reward}")
+            (
+                reward,
+                done,
+                reward_for_x_position,
+                reward_for_x_velocity,
+                reward_for_grounded_and_moving,
+                small_penalty_for_time,
+                penalty_for_time,
+                penalty_for_not_moving_right,
+                reward_for_level_completion,
+                penalty_for_death,
+            ) = calculate_reward(mario_api, action)
+
+            g_rewards_for_x_positions.append(reward_for_x_position)
+            # g_reward_for_x_position += reward_for_x_position
+            g_reward_for_x_velocity += reward_for_x_velocity
+            g_reward_for_grounded_and_moving += reward_for_grounded_and_moving
+            g_small_penalty_for_time += small_penalty_for_time
+            g_penalty_for_time += penalty_for_time
+            g_penalty_for_not_moving_right += penalty_for_not_moving_right
+            g_reward_for_level_completion += reward_for_level_completion
+            g_penalty_for_death += penalty_for_death
 
             next_state_discrete = discretize_state(mario_api)
 
@@ -131,12 +161,24 @@ def train():
             state_discrete = next_state_discrete
             total_reward += reward
 
+        highest_x_position = max(g_rewards_for_x_positions)
+        total_reward += highest_x_position
         # Decay epsilon
         epsilon = max(min_epsilon, epsilon * epsilon_decay)
         all_rewards.append(total_reward)
 
         avg_reward = np.mean(all_rewards[-100:])
         print(f"Episode: {episode}, Avg Reward: {avg_reward:.2f}, Epsilon: {epsilon:.4f}")
+        print(f"Reward for X Position: {highest_x_position:.2f}")
+        print(f"Reward for X Velocity: {g_reward_for_x_velocity:.2f}")
+        print(f"Reward for Grounded and Moving: {g_reward_for_grounded_and_moving:.2f}")
+        print(f"Small Penalty for Time: {g_small_penalty_for_time:.2f}")
+        print(f"Penalty for Time: {g_penalty_for_time:.2f}")
+        print(f"Penalty for Not Moving Right: {g_penalty_for_not_moving_right:.2f}")
+        print(f"Reward for Level Completion: {g_reward_for_level_completion:.2f}")
+        print(f"Penalty for Death: {g_penalty_for_death:.2f}")
+        print(f"Total Reward: {total_reward:.2f}")
+        print("~~~~~~~~~~~~~~~~~~~~~~~")
 
     # Save Q-table
     models_dir = "../models"
@@ -171,36 +213,65 @@ def take_action_in_emulator(mario_api: MarioAPI, action):
 
 def calculate_reward(mario_api: MarioAPI, action: np.intp = None):
     """
-    Calculates the reward based on the current state.
+    Calculates the reward based on Mario's progress, velocity, and completion status.
     """
 
-    # Reward for moving right
-    reward = mario_api.mario_x_position / 1.5  # Reward proportional to distance traveled
-    if mario_api.mario_x_velocity > 0:
-        reward += 5  # Reward for moving fast
+    reward = 0
+
+    # Base reward for moving right (scaled down significantly)
+    # reward = mario_api.mario_x_position / 10  # Reduced X position reward
+    reward_for_x_position = mario_api.mario_x_position / 10
+
+    # Additional reward for maintaining forward velocity
+    reward += mario_api.mario_x_velocity / 2  # Keep a meaningful reward for velocity
+    reward_for_x_velocity = mario_api.mario_x_velocity / 2
+
+    # Bonus for being grounded and moving (progress stability)
+    reward_for_grounded_and_moving = 0
     if mario_api.mario_is_grounded and mario_api.mario_x_velocity > 0:
-        reward += 1  # Reward for grounded movement forward
+        reward += 3  # Increased reward for stable, grounded movement
+        reward_for_grounded_and_moving = 3
 
-    reward -= (400 - mario_api.current_timer) / 90  # Penalty for time
+    # Small penalty for time to encourage quicker level completion
+    reward -= 0.02  # Less harsh penalty for slight delays
+    small_penalty_for_time = -0.02
 
-    reward -= 5  # Penalize for time constant
-    if action and action == 5:
-        reward -= 20  # Penalize crouching
-    elif action and action == 6:
-        reward -= 20  # Penalize looking up
-    elif action and action == 2:
-        reward -= 5  # Penalize jumping
+    # Time-based penalty to encourage quicker level completion
+    reward -= (1000 - mario_api.current_timer) / 2000  # Scaled time penalty (reduced from 1000)
+    penalty_for_time = -(1000 - mario_api.current_timer) / 2000
 
-    # Check if Mario died
-    if mario_api.mario_died:
-        reward -= 100  # Penalty for death
+    # Small penalty for actions that aren't moving right
+    penalty_for_not_moving_right = 0
+    if action is not None and action != 1:  # Assuming action 1 is "Move Right"
+        reward -= 0.5  # Less penalty for not moving right
+        penalty_for_not_moving_right = -0.5
+
+    # Reward for completing the level
+    reward_for_level_completion = 0
+    penalty_for_death = 0
+    if mario_api.mario_x_position > 4000:  # Assuming 4000+ is level completion
+        reward += 1000  # Big reward for reaching the end
+        reward_for_level_completion = 1000
         done = True
-    elif mario_api.mario_x_position > 4000:
-        reward += 1000  # Reward for reaching the end
+    elif mario_api.mario_died:  # Heavy penalty for dying
+        reward -= 100  # Penalize for dying
+        penalty_for_death = -100
         done = True
     else:
         done = False
-    return reward, done
+
+    return (
+        reward,
+        done,
+        reward_for_x_position,
+        reward_for_x_velocity,
+        reward_for_grounded_and_moving,
+        small_penalty_for_time,
+        penalty_for_time,
+        penalty_for_not_moving_right,
+        reward_for_level_completion,
+        penalty_for_death,
+    )
 
 
 if __name__ == "__main__":
