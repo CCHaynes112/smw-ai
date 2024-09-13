@@ -5,7 +5,7 @@ import win32con
 import win32gui
 
 
-MARIO_X_POSITION_FILE = "C:/Users/CCHay/Desktop/BizHawk-2.9.1-win-x64/Lua/mario_api.txt"
+MARIO_X_POSITION_FILE = "../scripts/MarioData.txt"
 
 
 class MarioAPI:

@@ -1,0 +1,36 @@
+SMW Addresses:
+
+This is x axis
+000094		8 - 4090
+
+This is death address. But it is called when the world map loads, so we should restart the ROM 2 seconds after this changes.
+000071		0 is alive, 9 is dead
+
+This is y value. 352 is ground-floor start value. Top is 0. Lower is higher number.
+000096		0-352
+
+This is grounded or not grounded. 256 is grounded, 0 is not grounded.
+0013EE
+
+Is running
+0014A0		0 - 16
+
+This is X velocity
+0013E4		0 - 112
+
+Timer digits (1 byte)
+000F25	b	u	0	WRAM	Timer 1st digit
+000F26	b	u	0	WRAM	Timer 2nd digit
+000F27	b	u	0	WRAM	Timer 3rd digit
+
+
+All:
+0x000094	w	u	0	WRAM	X axis (8-4090)
+0x000071	b	u	0	WRAM	Mario has died when 9
+0x000096	w	u	0	WRAM	Mario Y value (0-352)
+0x0013EE	w	u	0	WRAM	Is Grounded (0 yes, 256 no)
+0x0014A0	w	u	0	WRAM	Is running? (0-16)
+0x0013E4	w	u	0	WRAM	X velocity (0-112)
+0x000F25	b	u	0	WRAM	Timer 1st digit
+0x000F26	b	u	0	WRAM	Timer 2nd digit
+0x000F27	b	u	0	WRAM	Timer 3rd digit
